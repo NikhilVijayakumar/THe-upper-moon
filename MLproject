@@ -1,0 +1,20 @@
+# MLproject
+# conda.yaml
+name: mlops-recommender-env
+channels:
+  - conda-forge
+  - defaults
+dependencies:
+  - python=3.9
+  - pip
+  - pandas
+  - numpy
+  - pyyaml
+  - scikit-learn
+  - lightgbm
+  - joblib
+  - pip:
+      - mlflow==2.7.1 # Use a recent, stable version
+      - dvc
+      - boto3 # Required for MinIO/S3 artifact logging
+      - great_expectations # Optional, but good for data quality checks
