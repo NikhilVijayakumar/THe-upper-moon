@@ -1,12 +1,9 @@
-version: '3.8'
-
 # Define the network for all services
 networks:
   mlops_net:
     driver: bridge
 
 volumes:
-  postgres_data:
   minio_data:
 
 services:
@@ -21,7 +18,7 @@ services:
       - "9000:9000" # API Port
       - "9001:9001" # Console Port
     env_file:
-      - ./config/.env # Assuming .env is in a 'config' folder
+      - .env
     volumes:
       - ./minio_data:/data
     command: server /data --console-address ":9001"
@@ -40,12 +37,10 @@ services:
     image: minio/mc
     container_name: minio_client
     env_file:
-      - ./config/.env
+      - .env
     entrypoint: >
       /bin/sh -c "
-      # Wait for MinIO to be ready
       /usr/bin/mc alias set local http://minio:9000 $$MINIO_ROOT_USER $$MINIO_ROOT_PASSWORD;
-      # Create MLflow and DVC buckets
       /usr/bin/mc mb local/mlflow-artifacts --ignore-existing;
       /usr/bin/mc mb local/dvc-storage --ignore-existing;
       /usr/bin/mc policy set public local/mlflow-artifacts;
@@ -59,33 +54,9 @@ services:
       - mlops_net
 
   # ------------------------------------------------------------------
-  # 3. POSTGRESQL (Backend DB for MLflow and Airflow metadata)
-  # ------------------------------------------------------------------
-  postgres:
-    image: postgres:15-alpine
-    container_name: postgres
-    restart: always
-    ports:
-      - "5432:5432"
-    env_file:
-      - ./config/.env
-    volumes:
-      - ./postgres_data:/var/lib/postgresql/data
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER"]
-      interval: 5s
-      timeout: 5s
-      retries: 5
-    networks:
-      - mlops_net
-
-
-
-  # ------------------------------------------------------------------
-  # 4. MLFLOW TRACKING SERVER
+  # 3. MLFLOW TRACKING SERVER
   # ------------------------------------------------------------------
   mlflow:
-    # Requires a custom Dockerfile in a subfolder named 'mlflow_server'
     build:
       context: ./mlflow_server
       dockerfile: Dockerfile
@@ -94,134 +65,112 @@ services:
     ports:
       - "5000:5000"
     env_file:
-      - ./config/.env
-    environment:
-      # MLflow configuration to connect to the internal services
-      - MLFLOW_TRACKING_URI=postgresql://$$POSTGRES_USER:$$POSTES_PASSWORD@postgres:5432/$$POSTGRES_DB
-      - MLFLOW_S3_ENDPOINT_URL=http://minio:9000
-      - AWS_ACCESS_KEY_ID=$$MINIO_ROOT_USER
-      - AWS_SECRET_ACCESS_KEY=$$MINIO_ROOT_PASSWORD
-      - MLFLOW_ARTIFACT_ROOT=s3://mlflow-artifacts/
-    # FIX: Adding a 10 second sleep to overcome race condition with Postgres
+      - .env
     command: >
-      sh -c "sleep 10 && 
+      sh -c "sleep 5 && 
       mlflow server
-      --backend-store-uri postgresql://$$POSTGRES_USER:$$POSTGRES_PASSWORD@postgres:5432/$$POSTGRES_DB
+      --backend-store-uri $$MLFLOW_BACKEND_STORE_URI 
       --artifacts-destination s3://mlflow-artifacts/
       --host 0.0.0.0
       --port 5000"
     depends_on:
-      postgres:
-        condition: service_healthy
       mc:
         condition: service_completed_successfully
     networks:
       - mlops_net
 
   # ------------------------------------------------------------------
-  # 5. APACHE AIRFLOW (Initialization, Webserver, and Scheduler)
+  # 4. AIRFLOW SERVICES
   # ------------------------------------------------------------------
   airflow-init:
-    # Requires a custom Dockerfile in a subfolder named 'airflow'
     build: ./airflow
     container_name: airflow_init
     env_file:
-      - ./config/.env
+      - .env
+    environment:
+      - AIRFLOW__DATABASE__SQL_ALCHEMY_CONN=$$AIRFLOW__DATABASE__SQL_ALCHEMY_CONN
     entrypoint: [ "/usr/bin/dumb-init", "--", "/bin/bash", "-c" ]
-    # FIX: Adding a 10 second sleep to overcome race condition with Postgres
     command: >
       sh -c "
-      sleep 10;
-      airflow db migrate && 
-      airflow users create --username $$AIRFLOW_USER --firstname $$AIRFLOW_FIRST --lastname $$AIRFLOW_LAST --role Admin --email $$AIRFLOW_EMAIL -p $$AIRFLOW_PASS
+      sleep 10 &&
+      airflow db init && 
+      airflow db migrate &&
+      airflow users create 
+        --username $$AIRFLOW_USER 
+        --firstname $$AIRFLOW_FIRST 
+        --lastname $$AIRFLOW_LAST 
+        --role Admin 
+        --email $$AIRFLOW_EMAIL 
+        --password $$AIRFLOW_PASS
       "
-    depends_on:
-      postgres:
-        condition: service_healthy
     networks:
       - mlops_net
+    volumes:
+      - ./dags:/opt/airflow/dags
+      - ./airflow_data:/opt/airflow
 
   airflow-webserver:
     build: ./airflow
     container_name: airflow_webserver
     restart: always
     ports:
-      - "8080:8080" # Airflow UI Port
+      - "8080:8080"
     env_file:
-      - ./config/.env
-    # Pass environment variables needed by DAGs for external services
+      - .env
     environment:
+      - AIRFLOW__DATABASE__SQL_ALCHEMY_CONN=$$AIRFLOW__DATABASE__SQL_ALCHEMY_CONN
       - MLFLOW_TRACKING_URI=http://mlflow:5000
       - MLFLOW_S3_ENDPOINT_URL=http://minio:9000
-    command: ["airflow", "webserver"]
+    command: [ "airflow", "webserver" ] # Corrected to show the UI
     depends_on:
       airflow-init:
         condition: service_completed_successfully
     networks:
       - mlops_net
     volumes:
-      - ./dags:/opt/airflow/dags  # Mount the DAGs folder
-      - ./src:/app/hashiramart    # Mount the source code for DVC commands
+      - ./dags:/opt/airflow/dags
+      - ./airflow_data:/opt/airflow
+      - ./src:/app/hashiramart
 
   airflow-scheduler:
     build: ./airflow
     container_name: airflow_scheduler
     restart: always
     env_file:
-      - ./config/.env
+      - .env
     environment:
+      - AIRFLOW__DATABASE__SQL_ALCHEMY_CONN=$$AIRFLOW__DATABASE__SQL_ALCHEMY_CONN
       - MLFLOW_TRACKING_URI=http://mlflow:5000
       - MLFLOW_S3_ENDPOINT_URL=http://minio:9000
-    command: ["airflow", "scheduler"]
+    command: [ "airflow", "scheduler" ]
     depends_on:
       airflow-init:
         condition: service_completed_successfully
     networks:
       - mlops_net
     volumes:
-      - ./dags:/opt/airflow/dags  # Mount the DAGs folder
+      - ./dags:/opt/airflow/dags
+      - ./airflow_data:/opt/airflow
       - ./src:/app/hashiramart
 
   # ------------------------------------------------------------------
-  # 6. FASTAPI BACKEND
+  # 5. FASTAPI BACKEND
   # ------------------------------------------------------------------
   fastapi_backend:
     build:
-      context: ../src
+      context: ./src
       dockerfile: Dockerfile
     container_name: fastapi_backend
     restart: always
     ports:
       - "8000:8000"
     env_file:
-      - ./config/.env
-    environment:
-      - DATABASE_URL=postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
-    # It's always a good idea to add sleep here as well
+      - .env
     command: >
       sh -c "sleep 5 && 
-      uvicorn api.app:app --host 0.0.0.0 --port 8000"
+      uvicorn hashiramart.api.app:app --host 0.0.0.0 --port 8000"
     depends_on:
-      postgres:
-        condition: service_healthy
       mlflow:
         condition: service_started
     networks:
       - mlops_net
-
-  # ------------------------------------------------------------------
-  # 7. ADMINER (PostgreSQL Database UI Viewer) - NEW SERVICE
-  # ------------------------------------------------------------------
-  adminer:
-    image: adminer:4.8.1
-    container_name: adminer
-    restart: always
-    ports:
-      - "8081:8080" # Exposes Adminer on port 8081 on your host machine
-    networks:
-      - mlops_net
-    depends_on:
-      postgres:
-        condition: service_healthy
-
-

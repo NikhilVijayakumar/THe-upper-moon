@@ -5,7 +5,6 @@ FROM python:3.10-slim
 ENV PYTHONUNBUFFERED 1
 
 # --- Install Dependencies for PostgreSQL (psycopg2-binary) ---
-# We need system packages (gcc, libpq-dev) to build the PostgreSQL adapter.
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
         gcc \
@@ -13,28 +12,34 @@ RUN apt-get update \
     && rm -rf /var/lib/apt/lists/*
 
 # --- Set Working Directory ---
-# The build context (../src) will be copied here.
 WORKDIR /app
 
-# --- Install Python Packages ---
-# Install all required Python packages directly in the image
+# --- Install Python Packages without requirements.txt ---
 RUN pip install --no-cache-dir \
-    fastapi==0.111.0 \
-    uvicorn[standard]==0.29.0 \
-    sqlalchemy==2.0.30 \
-    psycopg2-binary==2.9.9 \
-    pydantic==2.7.4
+    fastapi \
+    uvicorn[standard] \
+    psycopg2-binary \
+    numpy \
+    scikit-learn==1.7.2 \
+    pandas==2.3.2 \
+    lightgbm==4.3.0 \
+    dvc[s3]==3.50.1 \
+    mlflow==2.15.0 \
+    pydantic==2.11.9 \
+    pydantic-settings==2.10.1 \
+    python-dotenv==1.1.1 \
+    pyyaml==6.0.2 \
+    pickle-mixin==1.0.2 \
+    minio==7.2.16 \
+    passlib==1.7.4 \
+    python-jose==3.5.0
 
 # --- Copy Application Code ---
-# Copy the source code from the build context (../src) into the container's /app directory
 COPY . /app
 
 # --- Expose Port ---
-# Inform Docker that the container listens on the specified port
 EXPOSE 8000
 
 # --- Entrypoint/Command ---
-# The command defined here is typically overridden by docker-compose, but
-# serves as a good default for running the application.
-# The command is: uvicorn api.app:app --host 0.0.0.0 --port 8000
-CMD ["uvicorn", "api.app:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["uvicorn", "hashiramart.api.app:app", "--host", "0.0.0.0", "--port", "8000"]
+

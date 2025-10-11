@@ -1,0 +1,22 @@
+# --- Web & API ---
+fastapi
+uvicorn[standard] # The ASGI server to run FastAPI
+psycopg2-binary # PostgreSQL adapter for Python
+
+# --- ML & Data Handling ---
+numpy
+scikit-learn == 1.7.2
+pandas == 2.3.2
+lightgbm == 4.3.0
+
+# --- MLOps & Tracking ---
+dvc[s3] == 3.50.1
+mlflow == 2.15.0
+
+# --- Configuration & Utilities ---
+pydantic == 2.11.9
+pydantic-settings == 2.10.1
+python-dotenv == 1.1.1
+pyyaml == 6.0.2
+pickle-mixin == 1.0.2
+minio == 7.2.16

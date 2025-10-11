@@ -1,0 +1,114 @@
+version: '3.8'
+
+networks:
+  bigdata-net:
+    driver: bridge
+
+volumes:
+  hadoop_namenode_data:
+  hadoop_datanode_data:
+
+services:
+  # ---------------------------------------------
+  # HADOOP HDFS SERVICES (for Distributed Storage)
+  # ---------------------------------------------
+  namenode:
+    image: bde2020/hadoop-namenode:2.0.0-hadoop3.2.1-java8
+    container_name: namenode
+    hostname: namenode
+    volumes:
+      - hadoop_namenode_data:/hadoop/dfs/name
+      - ./data/raw:/data/raw # Mount your local data to easily copy to HDFS
+    environment:
+      - CLUSTER_NAME=hadoop-cluster
+    ports:
+      - "9870:9870"  # NameNode UI
+    networks:
+      - bigdata-net
+
+  datanode1:
+    image: bde2020/hadoop-datanode:2.0.0-hadoop3.2.1-java8
+    container_name: datanode1
+    depends_on:
+      - namenode
+    volumes:
+      - hadoop_datanode_data:/hadoop/dfs/data
+    networks:
+      - bigdata-net
+
+  # ---------------------------------------------
+  # HADOOP YARN SERVICES (for Cluster Management)
+  # ---------------------------------------------
+  resourcemanager:
+    image: bde2020/hadoop-resourcemanager:2.0.0-hadoop3.2.1-java8
+    container_name: resourcemanager
+    hostname: resourcemanager
+    depends_on:
+      - namenode
+      - datanode1
+    ports:
+      - "8088:8088"  # ResourceManager UI
+    networks:
+      - bigdata-net
+
+  nodemanager1:
+    image: bde2020/hadoop-nodemanager:2.0.0-hadoop3.2.1-java8
+    container_name: nodemanager1
+    depends_on:
+      - resourcemanager
+    ports:
+      - "8042:8042"  # NodeManager UI
+    networks:
+      - bigdata-net
+
+  # ---------------------------------------------
+  # SPARK SERVICES (for Data Processing)
+  # ---------------------------------------------
+  spark-master:
+    image: bde2020/spark-master:3.1.2-hadoop3.2
+    container_name: spark-master
+    hostname: spark-master
+    depends_on:
+      - namenode
+      - resourcemanager
+    ports:
+      - "8080:8080"  # Spark Master UI
+      - "7077:7077"
+    volumes:
+      - ./ml_pipelines:/app # Mount your PySpark scripts
+    networks:
+      - bigdata-net
+
+  spark-worker-1:
+    image: bde2020/spark-worker:3.1.2-hadoop3.2
+    container_name: spark-worker-1
+    depends_on:
+      - spark-master
+    environment:
+      - SPARK_MASTER=spark://spark-master:7077
+    networks:
+      - bigdata-net
+
+  fastapi_backend:
+    build:
+      context: ./src
+      dockerfile: Dockerfile
+    container_name: fastapi_job_trigger
+    restart: always
+    ports:
+      - "8000:8000"
+    env_file:
+      - .env
+    volumes:
+      # CRITICAL: Mount the Docker socket to allow this container
+      # to execute 'docker exec' commands on the host.
+      - /var/run/docker.sock:/var/run/docker.sock
+    command: >
+      sh -c "sleep 5 && 
+      uvicorn api.app:app --host 0.0.0.0 --port 8000"
+    depends_on:
+      # CRITICAL: Depends on spark-master, not mlflow.
+      - spark-master
+    networks:
+      # CRITICAL: Must be on the same network as the cluster.
+      - bigdata-net

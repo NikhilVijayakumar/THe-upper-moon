@@ -1,5 +1,5 @@
-/docker/config/.env
-/docker/config/
+/config/.env
+/config/
 /data/
 /data/
 /.env
@@ -32,3 +32,5 @@
 /minio/minio_data/mlflow-dvc-bucket/files/md5/24/71b196482f8756104a193f2497d1e5/xl.meta
 /minio/minio_data/mlflow-dvc-bucket/files/md5/84/848247d7ec0d435887670916db5da4/xl.meta
 /minio/minio_data/mlflow-dvc-bucket/files/md5/f6/2eb59ab49d79c725d3982a6309f855/xl.meta
+/minio_data/
+/postgres_data/
