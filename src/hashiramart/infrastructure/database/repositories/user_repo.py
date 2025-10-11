@@ -22,7 +22,7 @@ class UserRepository(BaseRepository[User, UserCreate, UserUpdate]):
         """
         return db.query(User).filter(User.name == name).first()
 
-    def create(self, db: Session, *, obj_in: UserCreate) -> User:
+    def create(self, *, obj_in: UserCreate) -> User:
         """
         Creates a new user, hashing the password before saving.
 
@@ -45,7 +45,7 @@ class UserRepository(BaseRepository[User, UserCreate, UserUpdate]):
         db.refresh(db_obj)
         return db_obj
 
-    def authenticate(self, db: Session, *, name: str, password: str) -> Optional[User]:
+    def authenticate(self,  *, name: str, password: str) -> Optional[User]:
         """
         Authenticates a user by checking their name and password.
 

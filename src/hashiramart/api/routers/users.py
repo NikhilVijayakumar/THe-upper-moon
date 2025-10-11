@@ -20,10 +20,10 @@ def create_user(user: UserCreate, db: Session = Depends(get_db)):
     return user_repo.create(db=db, obj_in=user)
 
 @router.get("/me", response_model=UserSchema)
-def read_users_me(current_user: UserSchema = Depends(get_current_user)):
+def read_users_me():
     """
     Get the profile for the currently authenticated user.
     """
     # The `get_current_user` dependency handles token validation and fetching the user.
     # We just need to return it.
-    return current_user
+    return get_current_user(get_db())

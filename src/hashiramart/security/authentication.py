@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session
 
 from hashiramart.api.schemas.auth_schema import TokenData
 from hashiramart.config.settings import settings
-from hashiramart.infrastructure.database.connection import get_db
+
 from hashiramart.infrastructure.database.repositories.user_repo import UserRepository
 
 # This tells FastAPI where the client should go to get a token.
@@ -38,7 +38,7 @@ def create_access_token(data: dict, expires_delta: Optional[timedelta] = None):
     return encoded_jwt
 
 
-def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)):
+def get_current_user(db: Session ,token: str = Depends(oauth2_scheme), ):
     """
     A FastAPI dependency to decode and verify a token, then return the current user.
     This function will be used to protect routes.
