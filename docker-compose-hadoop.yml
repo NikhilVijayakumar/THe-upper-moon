@@ -8,6 +8,7 @@ volumes:
   hadoop_namenode_data:
   hadoop_datanode_data:
 
+
 services:
   # ---------------------------------------------
   # HADOOP HDFS SERVICES (for Distributed Storage)
@@ -102,10 +103,11 @@ services:
     volumes:
       # CRITICAL: Mount the Docker socket to allow this container
       # to execute 'docker exec' commands on the host.
+      - ./data/synthetic:/data/synthetic
       - /var/run/docker.sock:/var/run/docker.sock
     command: >
       sh -c "sleep 5 && 
-      uvicorn api.app:app --host 0.0.0.0 --port 8000"
+      uvicorn hashiramart.api.app:app --host 0.0.0.0 --port 8000"
     depends_on:
       # CRITICAL: Depends on spark-master, not mlflow.
       - spark-master

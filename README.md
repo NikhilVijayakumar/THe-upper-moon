@@ -101,17 +101,17 @@ The core application is a FastAPI server providing a RESTful API for all functio
 
 ## 🧩 5. Tech Stack Summary
 
-| Layer | Technology | Purpose |
-| :--- | :--- | :--- |
-| **Data Lake** | Hadoop HDFS | Distributed storage for raw, large-scale data. |
-| **Data Processing**| Apache Spark & YARN | Large-scale, distributed data cleaning and feature engineering. |
-| **Data Versioning** | DVC | Version control for datasets and ML models, works with MinIO. |
-| **Experiment Tracking** | MLflow | Logging and managing ML experiments, models, and metrics. |
-| **Artifact Store** | MinIO | S3-compatible storage for DVC data, MLflow artifacts, and clean datasets. |
-| **Backend API** | FastAPI | High-performance Python framework for serving the API. |
-| **Database** | Supabase (Postgres) | Cloud-hosted database for application data and MLflow/Airflow metadata. |
+| Layer | Technology             | Purpose |
+| :--- |:-----------------------| :--- |
+| **Data Lake** | Hadoop HDFS            | Distributed storage for raw, large-scale data. |
+| **Data Processing**| Apache Spark & YARN    | Large-scale, distributed data cleaning and feature engineering. |
+| **Data Versioning** | DVC                    | Version control for datasets and ML models, works with MinIO. |
+| **Experiment Tracking** | MLflow                 | Logging and managing ML experiments, models, and metrics. |
+| **Artifact Store** | MinIO                  | S3-compatible storage for DVC data, MLflow artifacts, and clean datasets. |
+| **Backend API** | FastAPI                | High-performance Python framework for serving the API. |
+| **Database** | Neon (Postgres)        | Cloud-hosted database for application data and MLflow/Airflow metadata. |
 | **ML Models** | Scikit-learn, LightGBM | Training the recommender and forecasting models. |
-| **Containerization** | Docker Compose | Defining and running the multi-container application environments. |
+| **Containerization** | Docker Compose         | Defining and running the multi-container application environments. |
 
 -----
 
