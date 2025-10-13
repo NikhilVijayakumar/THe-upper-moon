@@ -1,63 +1,94 @@
-import subprocess
-from fastapi import APIRouter, UploadFile, File, HTTPException, Query
-import os
-import shutil
+import requests
+from fastapi import APIRouter, UploadFile, File, HTTPException, Query, status
 
-router = APIRouter(prefix="/big-data", tags=["HDFS"])
+router = APIRouter(prefix="/big-data", tags=["Big Data Operations"])
 
-SHARED_DIR = "/data/raw"
-NAME_NODE_CONTAINER = "namenode"
+# The internal address for the HDFS NameNode service from docker-compose
+HDFS_API_URL = "http://namenode:9870/webhdfs/v1"
+HDFS_USER = "root"
 
-@router.post("/upload/")
-async def upload_to_hdfs(file: UploadFile = File(...), hdfs_path: str = Query(default=None)):
-    # Save the uploaded file to the shared volume
-    local_path = os.path.join(SHARED_DIR, file.filename)
+
+@router.post("/upload", status_code=status.HTTP_201_CREATED)
+async def upload_to_hdfs(
+        file: UploadFile = File(...),
+        hdfs_path: str = Query(default="/user/hashiramart")
+):
+    """
+    Uploads a file to HDFS by proxying the request through the FastAPI app.
+    """
+    file_content = await file.read()
+    target_path = f"{hdfs_path.rstrip('/')}/{file.filename}"
+    create_url = f"{HDFS_API_URL}{target_path}?op=CREATE&user.name={HDFS_USER}&overwrite=true"
+
     try:
-        with open(local_path, "wb") as out_file:
-            shutil.copyfileobj(file.file, out_file)
-        hdfs_target = hdfs_path or f"/data/raw/{file.filename}"
-        # Run hdfs dfs -put from inside the namenode container
-        cmd = ["docker", "exec", NAME_NODE_CONTAINER, "hdfs", "dfs", "-put", "-f", local_path, hdfs_target]
-        result = subprocess.run(cmd, text=True, capture_output=True)
-        os.remove(local_path)
-        if result.returncode != 0:
-            raise HTTPException(status_code=500, detail=result.stderr)
-        return {"message": f"Uploaded {file.filename} to {hdfs_target}"}
-    except Exception as e:
-        if os.path.exists(local_path):
-            os.remove(local_path)
-        raise HTTPException(status_code=500, detail=str(e))
+        # Step 1: Send a CREATE request to the NameNode.
+        create_response = requests.put(create_url, allow_redirects=False)
+        create_response.raise_for_status()
 
-@router.delete("/remove/")
-def remove_from_hdfs(hdfs_path: str = Query(...)):
-    cmd = ["docker", "exec", NAME_NODE_CONTAINER, "hdfs", "dfs", "-rm", "-f", hdfs_path]
-    result = subprocess.run(cmd, text=True, capture_output=True)
-    if result.returncode != 0:
-        raise HTTPException(status_code=404, detail=result.stderr)
-    return {"message": f"Removed {hdfs_path} from HDFS."}
+        # Extract the redirect URL for the DataNode.
+        datanode_url = create_response.headers.get('Location')
+        if not datanode_url:
+            raise HTTPException(status_code=500, detail="HDFS did not provide a DataNode URL.")
 
-@router.get("/status/")
-def hdfs_status(hdfs_dir: str = Query(default="/data/raw")):
-    cmd = ["docker", "exec", NAME_NODE_CONTAINER, "hdfs", "dfs", "-ls", hdfs_dir]
-    result = subprocess.run(cmd, text=True, capture_output=True)
-    if result.returncode != 0:
-        raise HTTPException(status_code=404, detail=result.stderr)
-    files = [line for line in result.stdout.splitlines() if not line.startswith("Found")]
-    return {"hdfs_dir": hdfs_dir, "files": files}
+        # Step 2: Send the actual file content to the DataNode URL.
+        write_response = requests.put(datanode_url, data=file_content)
+        write_response.raise_for_status()
+
+        return {"message": f"Successfully uploaded {file.filename} to {target_path} in HDFS."}
+
+    except requests.exceptions.RequestException as e:
+        raise HTTPException(status_code=500, detail=f"Error communicating with HDFS: {e}")
 
 
+@router.get("/status")
+def hdfs_status(hdfs_path: str = Query(default="/user/hashiramart")):
+    """Gets the status and file listing for a directory in HDFS."""
+    status_url = f"{HDFS_API_URL}{hdfs_path}?op=LISTSTATUS&user.name={HDFS_USER}"
+    try:
+        response = requests.get(status_url)
+        response.raise_for_status()
+        return response.json()
+    except requests.exceptions.RequestException as e:
+        raise HTTPException(status_code=500, detail=f"Error communicating with HDFS: {e}")
 
 
-@router.post("/process/recommender")
-def process_recommender_data():
-    """Submits a Spark job to clean data for the recommender model."""
-    command = ["spark-submit", "--master", "yarn", "/app/clean_recommender.py"]
-    subprocess.Popen(command)
-    return {"message": "Recommender data processing job submitted."}
+@router.delete("/delete")
+def delete_from_hdfs(
+        hdfs_path: str = Query(default="/user/hashiramart", description="The full path of the file or directory to delete in HDFS"),
+        recursive: bool = Query(default=False, description="Set to true to delete non-empty directories")
+):
+    """Deletes a file or directory from HDFS."""
+    delete_url = f"{HDFS_API_URL}{hdfs_path}?op=DELETE&user.name={HDFS_USER}&recursive={str(recursive).lower()}"
 
-@router.post("/process/forecasting")
-def process_forecasting_data():
-    """Submits a Spark job to clean data for the forecasting model."""
-    command = ["spark-submit", "--master", "yarn", "/app/clean_forecasting.py"]
-    subprocess.Popen(command)
-    return {"message": "Forecasting data processing job submitted."}
+    try:
+        response = requests.delete(delete_url)
+        response.raise_for_status()  # Raises an error for non-2xx responses
+
+        # A successful delete returns {"boolean": true}
+        if response.json().get("boolean"):
+            return {"message": f"Successfully deleted {hdfs_path} from HDFS."}
+        else:
+            raise HTTPException(status_code=500, detail="HDFS reported a failure but did not return an error.")
+
+    except requests.exceptions.RequestException as e:
+        # If the file is not found, HDFS returns a 404, which raise_for_status will catch.
+        if e.response and e.response.status_code == 404:
+            raise HTTPException(status_code=404, detail=f"File or directory not found at {hdfs_path}")
+        raise HTTPException(status_code=500, detail=f"Error communicating with HDFS: {e}")
+
+
+
+
+# @router.post("/process/recommender")
+# def process_recommender_data():
+#     """Submits a Spark job to clean data for the recommender model."""
+#     command = ["spark-submit", "--master", "yarn", "/app/clean_recommender.py"]
+#     subprocess.Popen(command)
+#     return {"message": "Recommender data processing job submitted."}
+#
+# @router.post("/process/forecasting")
+# def process_forecasting_data():
+#     """Submits a Spark job to clean data for the forecasting model."""
+#     command = ["spark-submit", "--master", "yarn", "/app/clean_forecasting.py"]
+#     subprocess.Popen(command)
+#     return {"message": "Forecasting data processing job submitted."}
