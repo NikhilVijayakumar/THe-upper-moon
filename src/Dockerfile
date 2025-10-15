@@ -17,6 +17,7 @@ WORKDIR /app
 # --- Install Python Packages without requirements.txt ---
 RUN pip install --no-cache-dir \
     python-multipart \
+    pyspark \
     fastapi \
     uvicorn[standard] \
     psycopg2-binary \

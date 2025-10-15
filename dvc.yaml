@@ -1,40 +1,26 @@
-# Import variables from our single source of truth.
-vars:
-  - config/config.yaml
-
 stages:
-  get_data:
-    cmd: python -m src.data.get_data
+  get_processed_data:
+    cmd: python ml_pipelines/get_data.py
     deps:
-      - src/data/get_data.py
-      - src/config/settings.py
+      - ml_pipelines/get_data.py
     outs:
-      - ${paths.raw_data}
+      - data/processed # DVC will now track this entire directory
 
-  preprocess:
-    cmd: python -m src.data.preprocess
+  train_recommender:
+    cmd: python ml_pipelines/train_recommender.py
     deps:
-      - src/data/preprocess.py
-      - src/config/settings.py
-      - ${paths.raw_data}
+      - data/processed/recommender_features.parquet # Depends on the downloaded file
+      - ml_pipelines/train_recommender.py
     outs:
-      - ${paths.train_data}
-      - ${paths.test_data}
-
-  # This is our single, atomic stage for the experiment
-  train_and_evaluate:
-    # ✅ Corrected path to your training script
-    cmd: python -m src.experiment.experiment_train
-    deps:
-      # ✅ Corrected path to your training script
-      - src/experiment/experiment_train.py
-      - src/config/settings.py
-      - src/utils/io.py
-      - ${paths.train_data}
-      - ${paths.test_data}
-      - config/config.yaml
-    outs:
-      - ${paths.model}
+      - models/recommender.pkl
     metrics:
-      - ${paths.reports}:
+      - reports/metrics.json:
           cache: false
+
+  train_forecaster:
+    cmd: python ml_pipelines/train_forecaster.py
+    deps:
+      - data/processed/forecasting_features.parquet # Depends on the other downloaded file
+      - ml_pipelines/train_forecaster.py
+    outs:
+      - models/forecaster.pkl

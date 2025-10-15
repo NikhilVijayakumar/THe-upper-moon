@@ -1,5 +1,5 @@
-/config/.env
-/config/
+/ml_pipelines/config/.env
+/ml_pipelines/config/
 /data/
 /data/
 /.env
@@ -7,7 +7,7 @@
 /docker/minio_data/
 /.idea/.gitignore
 /minio/minio_data/.minio.sys/tmp/32b36d77-0fe8-4cc8-9dfd-87ba29698e1d
-/config.yaml
+/ml_pipelines/config/config.yaml
 /minio/minio_data/.minio.sys/format.json
 /.idea/misc.xml
 /.idea/modules.xml
